@@ -60,7 +60,7 @@ async function dbDelete(id) {
 
 const categories = {
   drinking: { label: "Drinking", emoji: "🍼", color: "#e8a598", askAmount: true },
-  diaper: { label: "Diapers", emoji: "🩲", color: "#b8d4b8", askAmount: false },
+  diaper: { label: "Diapers", emoji: "🚼", color: "#b8d4b8", askAmount: false },
   pump: { label: "Pump", emoji: "🫙", color: "#d4c5e2", askAmount: true },
 };
 
@@ -424,7 +424,7 @@ export default function BabyTracker() {
               <span style={{ fontSize: 15, fontWeight: "600" }}>Drinking</span>
             </button>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              {[["diaper", "🩲", "Diapers", "#b8d4b8"], ["pump", "🫙", "Pump", "#d4c5e2"]].map(([key, emoji, label, color]) => (
+              {[["diaper", "🚼", "Diapers", "#b8d4b8"], ["pump", "🫙", "Pump", "#d4c5e2"]].map(([key, emoji, label, color]) => (
                 <button key={key} onClick={() => openModal(key)} style={{
                   background: "white", border: `2px solid ${color}`,
                   borderRadius: 18, padding: "22px 12px", cursor: "pointer",
