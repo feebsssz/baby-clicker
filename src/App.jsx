@@ -37,6 +37,20 @@ async function dbInsert(entry) {
   if (!res.ok) throw new Error("Insert failed");
 }
 
+async function dbUpdate(entry) {
+  await fetch(`${SUPABASE_URL}/rest/v1/logs?id=eq.${entry.id}`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({
+      type: entry.type,
+      drink_type: entry.drinkType || null,
+      ts: entry.ts,
+      amount: entry.amount || null,
+      note: entry.note || null,
+    }),
+  });
+}
+
 async function dbDelete(id) {
   await fetch(`${SUPABASE_URL}/rest/v1/logs?id=eq.${id}`, {
     method: "DELETE",
@@ -126,8 +140,9 @@ export default function BabyTracker() {
   const [diaperSolid, setDiaperSolid] = useState(false);
   const [justLogged, setJustLogged] = useState(null);
 
-  // Manual entry modal
+  // Manual entry modal (also used for editing)
   const [manualOpen, setManualOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [manualType, setManualType] = useState("drinking");
   const [manualDateTime, setManualDateTime] = useState("");
   const [manualAmount, setManualAmount] = useState("");
@@ -168,6 +183,7 @@ export default function BabyTracker() {
   }
 
   function openManualEntry() {
+    setEditingId(null);
     setManualOpen(true);
     setManualType("drinking");
     setManualDateTime(nowDateTimeLocal());
@@ -178,6 +194,22 @@ export default function BabyTracker() {
     setManualDrinkType("breast");
     setManualDiaperWet(true);
     setManualDiaperSolid(false);
+  }
+
+  function openEdit(log) {
+    setEditingId(log.id);
+    setManualType(log.type === "diaper_wet" || log.type === "diaper_solid" ? "diaper" : log.type);
+    const d = new Date(log.ts);
+    const pad = n => String(n).padStart(2, "0");
+    setManualDateTime(`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`);
+    setManualAmount(log.amount ? String(log.amount) : "");
+    setManualBreastAmount("");
+    setManualFormulaAmount("");
+    setManualNote(log.note || "");
+    setManualDrinkType(log.type === "drinking" ? (log.drinkType || "breast") : "breast");
+    setManualDiaperWet(log.drinkType === "wet" || log.drinkType === "both" || log.type === "diaper_wet");
+    setManualDiaperSolid(log.drinkType === "solid" || log.drinkType === "both" || log.type === "diaper_solid");
+    setManualOpen(true);
   }
 
   async function saveEntry(entry) {
@@ -247,7 +279,7 @@ export default function BabyTracker() {
     const subType = manualType === "diaper"
       ? (manualDiaperWet && manualDiaperSolid ? "both" : manualDiaperWet ? "wet" : "solid")
       : null;
-    const id = Date.now() + Math.floor(Math.random() * 1000);
+    const id = editingId ?? (Date.now() + Math.floor(Math.random() * 1000));
     let entry;
     if (manualType === "drinking") {
       entry = buildDrinkEntry({
@@ -263,7 +295,14 @@ export default function BabyTracker() {
       };
     }
     setManualOpen(false);
-    await saveEntry(entry);
+    setEditingId(null);
+    if (editingId) {
+      setLogs(prev => prev.map(l => l.id === editingId ? entry : l).sort((a, b) => b.ts - a.ts));
+      setSyncing(true);
+      try { await dbUpdate(entry); } catch { setError("Could not update on server."); } finally { setSyncing(false); }
+    } else {
+      await saveEntry(entry);
+    }
   }
 
   async function deleteLog(id) {
@@ -431,6 +470,9 @@ export default function BabyTracker() {
                   {log.note && <div style={{ fontSize: 11, color: "#aaa" }}>{log.note}</div>}
                 </div>
                 <div style={{ fontSize: 13, color: "#aaa", fontVariantNumeric: "tabular-nums" }}>{formatTime(log.ts)}</div>
+                <button onClick={() => openEdit(log)} style={{
+                  background: "none", border: "none", cursor: "pointer", color: "#ccc", fontSize: 15, padding: "4px", lineHeight: 1,
+                }}>✎</button>
                 <button onClick={() => deleteLog(log.id)} style={{
                   background: "none", border: "none", cursor: "pointer", color: "#ddd", fontSize: 18, padding: "4px", lineHeight: 1,
                 }}>×</button>
@@ -498,6 +540,9 @@ export default function BabyTracker() {
                           {log.note ? <span style={{ color: "#bbb" }}> · {log.note}</span> : ""}
                         </span>
                         <span style={{ color: "#bbb", fontVariantNumeric: "tabular-nums" }}>{formatTime(log.ts)}</span>
+                        <button onClick={() => openEdit(log)} style={{
+                          background: "none", border: "none", cursor: "pointer", color: "#ccc", fontSize: 14, padding: "2px 4px", lineHeight: 1,
+                        }}>✎</button>
                         <button onClick={() => deleteLog(log.id)} style={{
                           background: "none", border: "none", cursor: "pointer", color: "#ddd", fontSize: 16, padding: "2px 4px", lineHeight: 1,
                         }}>×</button>
@@ -636,7 +681,7 @@ export default function BabyTracker() {
             boxShadow: "0 -4px 30px rgba(0,0,0,0.1)", maxHeight: "88vh", overflowY: "auto",
           }}>
             <div style={{ fontSize: 18, fontWeight: "700", marginBottom: 20, textAlign: "center" }}>
-              Add Past Entry
+              {editingId ? "Edit Entry" : "Add Past Entry"}
             </div>
 
             <div style={{ marginBottom: 16 }}>
@@ -758,7 +803,7 @@ export default function BabyTracker() {
               cursor: manualDiaperSaveDisabled ? "not-allowed" : "pointer",
               fontFamily: "inherit",
             }}>
-              Save Entry
+              {editingId ? "Update Entry" : "Save Entry"}
             </button>
           </div>
         </div>
