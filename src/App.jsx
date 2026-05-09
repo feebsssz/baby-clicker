@@ -552,8 +552,6 @@ export default function BabyTracker() {
           {sortedDates.map(date => {
             const dayLogs = grouped[date];
             const dDrink = dayLogs.filter(l => l.type === "drinking").reduce((s, l) => s + (l.amount || 0), 0);
-            const dBreast = dayLogs.filter(l => l.type === "drinking" && l.drinkType === "breast").reduce((s, l) => s + (l.amount || 0), 0);
-            const dFormula = dayLogs.filter(l => l.type === "drinking" && l.drinkType === "formula").reduce((s, l) => s + (l.amount || 0), 0);
             const dPump = dayLogs.filter(l => l.type === "pump").reduce((s, l) => s + (l.amount || 0), 0);
             const dWet = dayLogs.filter(isWet).length;
             const dSolid = dayLogs.filter(isSolid).length;
@@ -577,16 +575,7 @@ export default function BabyTracker() {
                     <span style={{ color: "#ccc", fontSize: 13 }}>{isDayExp ? "▾" : "▸"}</span>
                   </div>
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-start" }}>
-                    {dDrink > 0 && (
-                      <div>
-                        <Stat label="Drinking" value={`${dDrink}ml`} color="#e8a598" />
-                        {(dBreast > 0 || dFormula > 0) && (
-                          <div style={{ fontSize: 11, color: "#bbb", marginTop: 4, paddingLeft: 2 }}>
-                            {dBreast > 0 && `🤱 ${dBreast}ml`}{dBreast > 0 && dFormula > 0 && "  "}{dFormula > 0 && `🥛 ${dFormula}ml`}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    {dDrink > 0 && <Stat label="Drinking" value={`${dDrink}ml`} color="#e8a598" />}
                     {dPump > 0 && <Stat label="Pump" value={`${dPump}ml`} color="#d4c5e2" />}
                     {(dWet + dSolid) > 0 && <Stat label="Diapers" value={`${dWet}💧 ${dSolid}💩`} color="#b8d4b8" />}
                   </div>
