@@ -495,6 +495,9 @@ export default function BabyTracker() {
                           {log.note ? <span style={{ color: "#bbb" }}> · {log.note}</span> : ""}
                         </span>
                         <span style={{ color: "#bbb", fontVariantNumeric: "tabular-nums" }}>{formatTime(log.ts)}</span>
+                        <button onClick={() => deleteLog(log.id)} style={{
+                          background: "none", border: "none", cursor: "pointer", color: "#ddd", fontSize: 16, padding: "2px 4px", lineHeight: 1,
+                        }}>×</button>
                       </div>
                     );
                   })}
