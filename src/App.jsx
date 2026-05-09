@@ -52,8 +52,8 @@ const categories = {
 
 const drinkTypes = [
   { key: "breast", label: "Breast Milk", emoji: "🤱" },
-  { key: "formula", label: "Formula", emoji: "🧴" },
-  { key: "both", label: "Both", emoji: "🤱+🧴" },
+  { key: "formula", label: "Formula", emoji: "🥛" },
+  { key: "both", label: "Both", emoji: "🤱+🥛" },
 ];
 
 function formatTime(ts) {
@@ -204,7 +204,7 @@ export default function BabyTracker() {
       totalAmount = (b + f) || null;
       const parts = [];
       if (b) parts.push(`🤱 ${b}ml`);
-      if (f) parts.push(`🧴 ${f}ml`);
+      if (f) parts.push(`🥛 ${f}ml`);
       autoNote = parts.join(" + ");
     } else {
       totalAmount = parseFloat(singleAmt) || null;
@@ -472,7 +472,7 @@ export default function BabyTracker() {
                       <Stat label="Drinking" value={`${dDrink}ml`} color="#e8a598" />
                       {(dBreast > 0 || dFormula > 0) && (
                         <div style={{ fontSize: 11, color: "#bbb", marginTop: 4, paddingLeft: 2 }}>
-                          {dBreast > 0 && `🤱 ${dBreast}ml`}{dBreast > 0 && dFormula > 0 && "  "}{dFormula > 0 && `🧴 ${dFormula}ml`}
+                          {dBreast > 0 && `🤱 ${dBreast}ml`}{dBreast > 0 && dFormula > 0 && "  "}{dFormula > 0 && `🥛 ${dFormula}ml`}
                         </div>
                       )}
                     </div>
@@ -569,7 +569,7 @@ export default function BabyTracker() {
                     />
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 12, color: "#aaa", textAlign: "center", marginBottom: 4 }}>🧴 Formula</div>
+                    <div style={{ fontSize: 12, color: "#aaa", textAlign: "center", marginBottom: 4 }}>🥛 Formula</div>
                     <input type="number" inputMode="numeric" placeholder="0"
                       value={formulaAmount} onChange={e => setFormulaAmount(e.target.value)}
                       style={{ width: "100%", padding: "14px 8px", borderRadius: 12, border: "2px solid #eee", fontSize: 22, textAlign: "center", outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
@@ -710,7 +710,7 @@ export default function BabyTracker() {
                     />
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 12, color: "#aaa", textAlign: "center", marginBottom: 4 }}>🧴 Formula</div>
+                    <div style={{ fontSize: 12, color: "#aaa", textAlign: "center", marginBottom: 4 }}>🥛 Formula</div>
                     <input type="number" inputMode="numeric" placeholder="0"
                       value={manualFormulaAmount} onChange={e => setManualFormulaAmount(e.target.value)}
                       style={{ width: "100%", padding: "14px 8px", borderRadius: 12, border: "2px solid #eee", fontSize: 22, textAlign: "center", outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
