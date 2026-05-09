@@ -1,4 +1,4 @@
-# Léon's Clicker 👶
+# baby-clicker 👶
 
 A baby tracking app for logging feedings, diapers, and pumping sessions. Built for family use with real-time sync via Supabase.
 
@@ -40,8 +40,8 @@ create table logs (
 ### 2. Clone and configure
 
 ```bash
-git clone https://github.com/feebsssz/Leon-tracker.git
-cd Leon-tracker
+git clone https://github.com/feebsssz/baby-clicker.git
+cd baby-clicker
 npm install
 cp .env.example .env
 ```
