@@ -63,9 +63,7 @@ function formatDate(ts) {
   return new Date(ts).toLocaleDateString("no-NO", { weekday: "short", day: "numeric", month: "short" });
 }
 function dateKey(ts) {
-  const d = new Date(ts);
-  const pad = n => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  return new Date(ts).toLocaleDateString("sv-SE");
 }
 function todayKey() {
   return dateKey(Date.now());
