@@ -13,7 +13,7 @@ const headers = {
 
 async function dbFetch() {
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/logs?family_code=eq.${FAMILY_CODE}&order=ts.desc&limit=200`,
+    `${SUPABASE_URL}/rest/v1/logs?family_code=eq.${FAMILY_CODE}&order=ts.desc&limit=500`,
     { headers }
   );
   if (!res.ok) throw new Error("Fetch failed");
@@ -46,8 +46,7 @@ async function dbDelete(id) {
 
 const categories = {
   drinking: { label: "Drinking", emoji: "🍼", color: "#e8a598", askAmount: true },
-  diaper_wet: { label: "Wet Diaper", emoji: "💧", color: "#b8d4b8", askAmount: false },
-  diaper_solid: { label: "Dirty Diaper", emoji: "💩", color: "#c4b18a", askAmount: false },
+  diaper: { label: "Diapers", emoji: "🚼", color: "#b8d4b8", askAmount: false },
   pump: { label: "Pump", emoji: "🥛", color: "#d4c5e2", askAmount: true },
 };
 
@@ -66,13 +65,35 @@ function formatDate(ts) {
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
 }
-function getCat(type) {
-  return categories[type] || { label: type, emoji: "❓", color: "#ccc", askAmount: false };
+function nowDateTimeLocal() {
+  const d = new Date();
+  d.setSeconds(0, 0);
+  return d.toISOString().slice(0, 16);
 }
+
+function getCat(type, drinkType) {
+  if (type === "diaper_wet") return { label: "Wet Diaper", emoji: "💧", color: "#b8d4b8" };
+  if (type === "diaper_solid") return { label: "Dirty Diaper", emoji: "💩", color: "#c4b18a" };
+  if (type === "diaper") {
+    if (drinkType === "both") return { label: "Diaper", emoji: "💧💩", color: "#b8d4b8" };
+    if (drinkType === "solid") return { label: "Dirty Diaper", emoji: "💩", color: "#c4b18a" };
+    return { label: "Wet Diaper", emoji: "💧", color: "#b8d4b8" };
+  }
+  return categories[type] || { label: type, emoji: "❓", color: "#ccc" };
+}
+
 function drinkLabel(log) {
-  const dt = drinkTypes.find(d => d.key === log.drinkType || d.key === log.drink_type);
+  const dt = drinkTypes.find(d => d.key === log.drinkType);
   return dt ? ` · ${dt.emoji} ${dt.label}` : "";
 }
+
+function isWet(log) {
+  return log.type === "diaper_wet" || (log.type === "diaper" && (log.drinkType === "wet" || log.drinkType === "both"));
+}
+function isSolid(log) {
+  return log.type === "diaper_solid" || (log.type === "diaper" && (log.drinkType === "solid" || log.drinkType === "both"));
+}
+
 function normalizeLog(row) {
   return {
     id: row.id,
@@ -90,18 +111,32 @@ export default function BabyTracker() {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState(null);
   const [view, setView] = useState("home");
+
+  // Quick log modal
   const [modal, setModal] = useState(null);
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
   const [drinkType, setDrinkType] = useState("breast");
+  const [diaperWet, setDiaperWet] = useState(true);
+  const [diaperSolid, setDiaperSolid] = useState(false);
   const [justLogged, setJustLogged] = useState(null);
+
+  // Manual entry modal
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualType, setManualType] = useState("drinking");
+  const [manualDateTime, setManualDateTime] = useState("");
+  const [manualAmount, setManualAmount] = useState("");
+  const [manualNote, setManualNote] = useState("");
+  const [manualDrinkType, setManualDrinkType] = useState("breast");
+  const [manualDiaperWet, setManualDiaperWet] = useState(true);
+  const [manualDiaperSolid, setManualDiaperSolid] = useState(false);
 
   const loadLogs = useCallback(async () => {
     try {
       const rows = await dbFetch();
       setLogs(rows.map(normalizeLog));
       setError(null);
-    } catch (e) {
+    } catch {
       setError("Could not load data. Check connection.");
     } finally {
       setLoading(false);
@@ -119,19 +154,27 @@ export default function BabyTracker() {
     setAmount("");
     setNote("");
     setDrinkType("breast");
+    setDiaperWet(true);
+    setDiaperSolid(false);
   }
 
-  async function confirmLog() {
-    const entry = {
-      id: Date.now(),
-      type: modal,
-      drinkType: modal === "drinking" ? drinkType : null,
-      ts: Date.now(),
-      amount: categories[modal].askAmount ? (parseFloat(amount) || null) : null,
-      note,
-    };
-    setLogs(prev => [entry, ...prev]);
-    setModal(null);
+  function openManualEntry() {
+    setManualOpen(true);
+    setManualType("drinking");
+    setManualDateTime(nowDateTimeLocal());
+    setManualAmount("");
+    setManualNote("");
+    setManualDrinkType("breast");
+    setManualDiaperWet(true);
+    setManualDiaperSolid(false);
+  }
+
+  async function saveEntry(entry) {
+    setLogs(prev => {
+      const next = [entry, ...prev];
+      next.sort((a, b) => b.ts - a.ts);
+      return next;
+    });
     setJustLogged(entry);
     setTimeout(() => setJustLogged(null), 2500);
     setSyncing(true);
@@ -142,6 +185,40 @@ export default function BabyTracker() {
     } finally {
       setSyncing(false);
     }
+  }
+
+  async function confirmLog() {
+    const subType = modal === "diaper"
+      ? (diaperWet && diaperSolid ? "both" : diaperWet ? "wet" : "solid")
+      : null;
+    const entry = {
+      id: Date.now(),
+      type: modal,
+      drinkType: modal === "drinking" ? drinkType : subType,
+      ts: Date.now(),
+      amount: categories[modal].askAmount ? (parseFloat(amount) || null) : null,
+      note,
+    };
+    setModal(null);
+    await saveEntry(entry);
+  }
+
+  async function confirmManualLog() {
+    if (manualType === "diaper" && !manualDiaperWet && !manualDiaperSolid) return;
+    const ts = manualDateTime ? new Date(manualDateTime).getTime() : Date.now();
+    const subType = manualType === "diaper"
+      ? (manualDiaperWet && manualDiaperSolid ? "both" : manualDiaperWet ? "wet" : "solid")
+      : null;
+    const entry = {
+      id: Date.now() + Math.floor(Math.random() * 1000),
+      type: manualType,
+      drinkType: manualType === "drinking" ? manualDrinkType : subType,
+      ts,
+      amount: (manualType === "drinking" || manualType === "pump") ? (parseFloat(manualAmount) || null) : null,
+      note: manualNote,
+    };
+    setManualOpen(false);
+    await saveEntry(entry);
   }
 
   async function deleteLog(id) {
@@ -157,8 +234,8 @@ export default function BabyTracker() {
   const todayLogs = logs.filter(l => new Date(l.ts).toISOString().slice(0, 10) === today);
   const totalDrinking = todayLogs.filter(l => l.type === "drinking").reduce((s, l) => s + (l.amount || 0), 0);
   const totalPump = todayLogs.filter(l => l.type === "pump").reduce((s, l) => s + (l.amount || 0), 0);
-  const wetDiapers = todayLogs.filter(l => l.type === "diaper_wet").length;
-  const solidDiapers = todayLogs.filter(l => l.type === "diaper_solid").length;
+  const wetDiapers = todayLogs.filter(isWet).length;
+  const solidDiapers = todayLogs.filter(isSolid).length;
 
   const grouped = logs.reduce((acc, l) => {
     const d = new Date(l.ts).toISOString().slice(0, 10);
@@ -167,6 +244,10 @@ export default function BabyTracker() {
     return acc;
   }, {});
   const sortedDates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
+
+  const modalCat = modal ? (categories[modal] || {}) : {};
+  const diaperSaveDisabled = modal === "diaper" && !diaperWet && !diaperSolid;
+  const manualDiaperSaveDisabled = manualType === "diaper" && !manualDiaperWet && !manualDiaperSolid;
 
   if (loading) return (
     <div style={{
@@ -201,7 +282,7 @@ export default function BabyTracker() {
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <TabBtn active={view === "home"} onClick={() => setView("home")}>Log</TabBtn>
-          <TabBtn active={view === "summary"} onClick={() => setView("summary")}>Summary</TabBtn>
+          <TabBtn active={view === "history"} onClick={() => setView("history")}>History</TabBtn>
         </div>
       </div>
 
@@ -222,8 +303,8 @@ export default function BabyTracker() {
             display: "flex", gap: 12, flexWrap: "wrap",
           }}>
             <Stat label="Drinking" value={totalDrinking ? `${totalDrinking}ml` : "—"} color="#e8a598" />
-            <Stat label="Pump" value={totalPump ? `${totalPump}ml` : "—"} color="#d4c5e2" />
             <Stat label="Diapers" value={(wetDiapers + solidDiapers) > 0 ? `${wetDiapers}💧 ${solidDiapers}💩` : "—"} color="#b8d4b8" />
+            <Stat label="Pump" value={totalPump ? `${totalPump}ml` : "—"} color="#d4c5e2" />
             <div style={{ marginLeft: "auto", display: "flex", alignItems: "center" }}>
               <button onClick={loadLogs} style={{
                 background: "none", border: "none", cursor: "pointer", fontSize: 18, padding: 4, color: "#ccc",
@@ -231,27 +312,51 @@ export default function BabyTracker() {
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 24 }}>
-            {Object.entries(categories).map(([key, cat]) => (
-              <button key={key} onClick={() => openModal(key)} style={{
-                background: "white", border: `2px solid ${cat.color}`,
-                borderRadius: 18, padding: "22px 12px", cursor: "pointer",
-                display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
-                boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-              }}
-                onMouseDown={e => e.currentTarget.style.transform = "scale(0.96)"}
-                onMouseUp={e => e.currentTarget.style.transform = "scale(1)"}
-                onTouchStart={e => e.currentTarget.style.transform = "scale(0.96)"}
-                onTouchEnd={e => e.currentTarget.style.transform = "scale(1)"}
-              >
-                <span style={{ fontSize: 34 }}>{cat.emoji}</span>
-                <span style={{ fontSize: 13, fontWeight: "600" }}>{cat.label}</span>
-              </button>
-            ))}
+          <div style={{ marginBottom: 24 }}>
+            <button onClick={() => openModal("drinking")} style={{
+              width: "100%", background: "white", border: "2px solid #e8a598",
+              borderRadius: 18, padding: "20px 12px", cursor: "pointer", marginBottom: 12,
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 12,
+              boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+            }}
+              onMouseDown={e => e.currentTarget.style.transform = "scale(0.98)"}
+              onMouseUp={e => e.currentTarget.style.transform = "scale(1)"}
+              onTouchStart={e => e.currentTarget.style.transform = "scale(0.98)"}
+              onTouchEnd={e => e.currentTarget.style.transform = "scale(1)"}
+            >
+              <span style={{ fontSize: 34 }}>🍼</span>
+              <span style={{ fontSize: 15, fontWeight: "600" }}>Drinking</span>
+            </button>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              {[["diaper", "🚼", "Diapers", "#b8d4b8"], ["pump", "🥛", "Pump", "#d4c5e2"]].map(([key, emoji, label, color]) => (
+                <button key={key} onClick={() => openModal(key)} style={{
+                  background: "white", border: `2px solid ${color}`,
+                  borderRadius: 18, padding: "22px 12px", cursor: "pointer",
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+                }}
+                  onMouseDown={e => e.currentTarget.style.transform = "scale(0.96)"}
+                  onMouseUp={e => e.currentTarget.style.transform = "scale(1)"}
+                  onTouchStart={e => e.currentTarget.style.transform = "scale(0.96)"}
+                  onTouchEnd={e => e.currentTarget.style.transform = "scale(1)"}
+                >
+                  <span style={{ fontSize: 34 }}>{emoji}</span>
+                  <span style={{ fontSize: 13, fontWeight: "600" }}>{label}</span>
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div style={{ fontSize: 12, fontWeight: "700", letterSpacing: 1, color: "#aaa", textTransform: "uppercase", marginBottom: 10 }}>
-            Today
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: "700", letterSpacing: 1, color: "#aaa", textTransform: "uppercase" }}>
+              Today
+            </div>
+            <button onClick={openManualEntry} style={{
+              background: "none", border: "1px solid #ddd", borderRadius: 20, padding: "4px 12px",
+              fontSize: 12, color: "#aaa", cursor: "pointer", fontFamily: "inherit", fontWeight: "600",
+            }}>
+              ＋ Add past entry
+            </button>
           </div>
           {todayLogs.length === 0 && (
             <div style={{ color: "#bbb", fontSize: 14, textAlign: "center", padding: "30px 0" }}>
@@ -259,7 +364,7 @@ export default function BabyTracker() {
             </div>
           )}
           {todayLogs.map(log => {
-            const cat = getCat(log.type);
+            const cat = getCat(log.type, log.drinkType);
             return (
               <div key={log.id} style={{
                 display: "flex", alignItems: "center", padding: "10px 14px",
@@ -273,7 +378,9 @@ export default function BabyTracker() {
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 14, fontWeight: "600" }}>
                     {cat.label}
-                    {log.drinkType && <span style={{ fontSize: 12, color: "#aaa", fontWeight: "400" }}>{drinkLabel(log)}</span>}
+                    {log.type === "drinking" && log.drinkType && (
+                      <span style={{ fontSize: 12, color: "#aaa", fontWeight: "400" }}>{drinkLabel(log)}</span>
+                    )}
                   </div>
                   {log.amount && <div style={{ fontSize: 12, color: "#888" }}>{log.amount} ml</div>}
                   {log.note && <div style={{ fontSize: 11, color: "#aaa" }}>{log.note}</div>}
@@ -288,8 +395,16 @@ export default function BabyTracker() {
         </div>
       )}
 
-      {view === "summary" && (
+      {view === "history" && (
         <div style={{ padding: "20px 20px 80px" }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+            <button onClick={openManualEntry} style={{
+              background: "#3a3028", color: "white", border: "none", borderRadius: 20, padding: "8px 16px",
+              fontSize: 13, cursor: "pointer", fontFamily: "inherit", fontWeight: "600",
+            }}>
+              ＋ Add past entry
+            </button>
+          </div>
           {sortedDates.length === 0 && (
             <div style={{ color: "#bbb", fontSize: 14, textAlign: "center", padding: "40px 0" }}>No data yet.</div>
           )}
@@ -299,8 +414,8 @@ export default function BabyTracker() {
             const dBreast = dayLogs.filter(l => l.type === "drinking" && l.drinkType === "breast").reduce((s, l) => s + (l.amount || 0), 0);
             const dFormula = dayLogs.filter(l => l.type === "drinking" && l.drinkType === "formula").reduce((s, l) => s + (l.amount || 0), 0);
             const dPump = dayLogs.filter(l => l.type === "pump").reduce((s, l) => s + (l.amount || 0), 0);
-            const dWet = dayLogs.filter(l => l.type === "diaper_wet").length;
-            const dSolid = dayLogs.filter(l => l.type === "diaper_solid").length;
+            const dWet = dayLogs.filter(isWet).length;
+            const dSolid = dayLogs.filter(isSolid).length;
             return (
               <div key={date} style={{
                 background: "white", borderRadius: 16, padding: "16px 18px",
@@ -312,7 +427,7 @@ export default function BabyTracker() {
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12, alignItems: "flex-start" }}>
                   {dDrink > 0 && (
                     <div>
-                      <Stat label="Total Drinking" value={`${dDrink}ml`} color="#e8a598" />
+                      <Stat label="Drinking" value={`${dDrink}ml`} color="#e8a598" />
                       {(dBreast > 0 || dFormula > 0) && (
                         <div style={{ fontSize: 11, color: "#bbb", marginTop: 4, paddingLeft: 2 }}>
                           {dBreast > 0 && `🤱 ${dBreast}ml`}{dBreast > 0 && dFormula > 0 && "  "}{dFormula > 0 && `🧴 ${dFormula}ml`}
@@ -325,7 +440,7 @@ export default function BabyTracker() {
                 </div>
                 <div style={{ borderTop: "1px solid #f0f0f0", paddingTop: 10 }}>
                   {dayLogs.map(log => {
-                    const cat = getCat(log.type);
+                    const cat = getCat(log.type, log.drinkType);
                     return (
                       <div key={log.id} style={{
                         display: "flex", alignItems: "center", gap: 8, fontSize: 13, padding: "4px 0", color: "#666",
@@ -333,8 +448,9 @@ export default function BabyTracker() {
                         <span>{cat.emoji}</span>
                         <span style={{ flex: 1 }}>
                           {cat.label}
-                          {log.drinkType && <span style={{ color: "#bbb" }}>{drinkLabel(log)}</span>}
+                          {log.type === "drinking" && log.drinkType && <span style={{ color: "#bbb" }}>{drinkLabel(log)}</span>}
                           {log.amount ? ` — ${log.amount}ml` : ""}
+                          {log.note ? <span style={{ color: "#bbb" }}> · {log.note}</span> : ""}
                         </span>
                         <span style={{ color: "#bbb", fontVariantNumeric: "tabular-nums" }}>{formatTime(log.ts)}</span>
                       </div>
@@ -347,6 +463,7 @@ export default function BabyTracker() {
         </div>
       )}
 
+      {/* Quick Log Modal */}
       {modal && (
         <div style={{
           position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)",
@@ -358,8 +475,8 @@ export default function BabyTracker() {
             boxShadow: "0 -4px 30px rgba(0,0,0,0.1)",
           }}>
             <div style={{ textAlign: "center", marginBottom: 20 }}>
-              <div style={{ fontSize: 44, marginBottom: 6 }}>{categories[modal].emoji}</div>
-              <div style={{ fontSize: 18, fontWeight: "700" }}>{categories[modal].label}</div>
+              <div style={{ fontSize: 44, marginBottom: 6 }}>{modalCat.emoji}</div>
+              <div style={{ fontSize: 18, fontWeight: "700" }}>{modalCat.label}</div>
               <div style={{ fontSize: 12, color: "#aaa", marginTop: 4 }}>
                 {new Date().toLocaleTimeString("no-NO", { hour: "2-digit", minute: "2-digit" })}
               </div>
@@ -387,7 +504,17 @@ export default function BabyTracker() {
               </div>
             )}
 
-            {categories[modal].askAmount && (
+            {modal === "diaper" && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ fontSize: 13, color: "#888", display: "block", marginBottom: 8 }}>Type (select one or both)</label>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <CheckToggle label="Wet" emoji="💧" checked={diaperWet} onChange={setDiaperWet} color="#b8d4b8" />
+                  <CheckToggle label="Solid" emoji="💩" checked={diaperSolid} onChange={setDiaperSolid} color="#c4b18a" />
+                </div>
+              </div>
+            )}
+
+            {modalCat.askAmount && (
               <div style={{ marginBottom: 16 }}>
                 <label style={{ fontSize: 13, color: "#888", display: "block", marginBottom: 6 }}>Amount (ml)</label>
                 <input
@@ -414,10 +541,13 @@ export default function BabyTracker() {
               />
             </div>
 
-            <button onClick={confirmLog} style={{
-              width: "100%", padding: "16px", background: categories[modal].color,
+            <button onClick={confirmLog} disabled={diaperSaveDisabled} style={{
+              width: "100%", padding: "16px",
+              background: diaperSaveDisabled ? "#eee" : modalCat.color,
               border: "none", borderRadius: 14, fontSize: 16, fontWeight: "700",
-              color: "white", cursor: "pointer", fontFamily: "inherit",
+              color: diaperSaveDisabled ? "#aaa" : "white",
+              cursor: diaperSaveDisabled ? "not-allowed" : "pointer",
+              fontFamily: "inherit",
             }}>
               Save Log
             </button>
@@ -425,16 +555,139 @@ export default function BabyTracker() {
         </div>
       )}
 
-      {justLogged && (
+      {/* Manual Entry Modal */}
+      {manualOpen && (
         <div style={{
-          position: "fixed", bottom: 32, left: "50%", transform: "translateX(-50%)",
-          background: "#3a3028", color: "white", padding: "12px 22px", borderRadius: 50,
-          fontSize: 14, fontWeight: "600", boxShadow: "0 4px 16px rgba(0,0,0,0.2)",
-          zIndex: 200, whiteSpace: "nowrap",
-        }}>
-          {categories[justLogged.type].emoji} Logged at {formatTime(justLogged.ts)}
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)",
+          display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 100,
+        }} onClick={() => setManualOpen(false)}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background: "white", borderRadius: "24px 24px 0 0",
+            padding: "28px 24px 44px", width: "100%", maxWidth: 430,
+            boxShadow: "0 -4px 30px rgba(0,0,0,0.1)", maxHeight: "88vh", overflowY: "auto",
+          }}>
+            <div style={{ fontSize: 18, fontWeight: "700", marginBottom: 20, textAlign: "center" }}>
+              Add Past Entry
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 13, color: "#888", display: "block", marginBottom: 8 }}>Category</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                {Object.entries(categories).map(([key, cat]) => (
+                  <button key={key} onClick={() => setManualType(key)} style={{
+                    flex: 1, padding: "10px 6px", borderRadius: 12,
+                    border: `2px solid ${manualType === key ? cat.color : "#eee"}`,
+                    background: manualType === key ? cat.color + "20" : "white",
+                    cursor: "pointer", fontSize: 12, fontWeight: "600",
+                    color: manualType === key ? "#3a3028" : "#aaa",
+                    fontFamily: "inherit",
+                    display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                  }}>
+                    <span style={{ fontSize: 20 }}>{cat.emoji}</span>
+                    <span>{cat.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 13, color: "#888", display: "block", marginBottom: 6 }}>Date & Time</label>
+              <input
+                type="datetime-local"
+                value={manualDateTime}
+                onChange={e => setManualDateTime(e.target.value)}
+                style={{
+                  width: "100%", padding: "12px 16px", borderRadius: 12, border: "2px solid #eee",
+                  fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "inherit",
+                }}
+              />
+            </div>
+
+            {manualType === "drinking" && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ fontSize: 13, color: "#888", display: "block", marginBottom: 8 }}>Drink Type</label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {drinkTypes.map(dt => (
+                    <button key={dt.key} onClick={() => setManualDrinkType(dt.key)} style={{
+                      flex: 1, padding: "10px 6px", borderRadius: 12,
+                      border: `2px solid ${manualDrinkType === dt.key ? "#e8a598" : "#eee"}`,
+                      background: manualDrinkType === dt.key ? "#e8a59820" : "white",
+                      cursor: "pointer", fontSize: 12, fontWeight: "600",
+                      color: manualDrinkType === dt.key ? "#3a3028" : "#aaa",
+                      fontFamily: "inherit",
+                      display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                    }}>
+                      <span style={{ fontSize: 20 }}>{dt.emoji}</span>
+                      <span>{dt.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {manualType === "diaper" && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ fontSize: 13, color: "#888", display: "block", marginBottom: 8 }}>Diaper Type (select one or both)</label>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <CheckToggle label="Wet" emoji="💧" checked={manualDiaperWet} onChange={setManualDiaperWet} color="#b8d4b8" />
+                  <CheckToggle label="Solid" emoji="💩" checked={manualDiaperSolid} onChange={setManualDiaperSolid} color="#c4b18a" />
+                </div>
+              </div>
+            )}
+
+            {(manualType === "drinking" || manualType === "pump") && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ fontSize: 13, color: "#888", display: "block", marginBottom: 6 }}>Amount (ml)</label>
+                <input
+                  type="number" inputMode="numeric" placeholder="e.g. 80"
+                  value={manualAmount} onChange={e => setManualAmount(e.target.value)}
+                  style={{
+                    width: "100%", padding: "14px 16px", borderRadius: 12, border: "2px solid #eee",
+                    fontSize: 22, textAlign: "center", outline: "none", boxSizing: "border-box", fontFamily: "inherit",
+                  }}
+                />
+              </div>
+            )}
+
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ fontSize: 13, color: "#888", display: "block", marginBottom: 6 }}>Note (optional)</label>
+              <input
+                type="text" placeholder="e.g. fussy, fell asleep..."
+                value={manualNote} onChange={e => setManualNote(e.target.value)}
+                style={{
+                  width: "100%", padding: "12px 16px", borderRadius: 12, border: "2px solid #eee",
+                  fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "inherit",
+                }}
+              />
+            </div>
+
+            <button onClick={confirmManualLog} disabled={manualDiaperSaveDisabled} style={{
+              width: "100%", padding: "16px",
+              background: manualDiaperSaveDisabled ? "#eee" : categories[manualType].color,
+              border: "none", borderRadius: 14, fontSize: 16, fontWeight: "700",
+              color: manualDiaperSaveDisabled ? "#aaa" : "white",
+              cursor: manualDiaperSaveDisabled ? "not-allowed" : "pointer",
+              fontFamily: "inherit",
+            }}>
+              Save Entry
+            </button>
+          </div>
         </div>
       )}
+
+      {justLogged && (() => {
+        const cat = getCat(justLogged.type, justLogged.drinkType);
+        return (
+          <div style={{
+            position: "fixed", bottom: 32, left: "50%", transform: "translateX(-50%)",
+            background: "#3a3028", color: "white", padding: "12px 22px", borderRadius: 50,
+            fontSize: 14, fontWeight: "600", boxShadow: "0 4px 16px rgba(0,0,0,0.2)",
+            zIndex: 200, whiteSpace: "nowrap",
+          }}>
+            {cat.emoji} Logged at {formatTime(justLogged.ts)}
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -448,6 +701,28 @@ function TabBtn({ active, onClick, children }) {
       fontSize: 13, fontWeight: "600", cursor: "pointer", fontFamily: "inherit",
     }}>
       {children}
+    </button>
+  );
+}
+
+function CheckToggle({ label, emoji, checked, onChange, color }) {
+  return (
+    <button onClick={() => onChange(!checked)} style={{
+      flex: 1, padding: "14px 10px", borderRadius: 14,
+      border: `2px solid ${checked ? color : "#eee"}`,
+      background: checked ? color + "30" : "white",
+      cursor: "pointer", fontFamily: "inherit",
+      display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+    }}>
+      <span style={{ fontSize: 28 }}>{emoji}</span>
+      <span style={{ fontSize: 13, fontWeight: "600", color: checked ? "#3a3028" : "#aaa" }}>{label}</span>
+      <span style={{
+        width: 20, height: 20, borderRadius: "50%",
+        border: `2px solid ${checked ? color : "#ddd"}`,
+        background: checked ? color : "white",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontSize: 11, color: "white", fontWeight: "700",
+      }}>{checked ? "✓" : ""}</span>
     </button>
   );
 }
