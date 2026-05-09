@@ -138,6 +138,7 @@ export default function BabyTracker() {
   const [drinkType, setDrinkType] = useState("breast");
   const [diaperWet, setDiaperWet] = useState(true);
   const [diaperSolid, setDiaperSolid] = useState(false);
+  const [modalTime, setModalTime] = useState("");
   const [justLogged, setJustLogged] = useState(null);
 
   // Manual entry modal (also used for editing)
@@ -180,6 +181,7 @@ export default function BabyTracker() {
     setDrinkType("breast");
     setDiaperWet(true);
     setDiaperSolid(false);
+    setModalTime(nowDateTimeLocal());
   }
 
   function openManualEntry() {
@@ -252,7 +254,7 @@ export default function BabyTracker() {
     const subType = modal === "diaper"
       ? (diaperWet && diaperSolid ? "both" : diaperWet ? "wet" : "solid")
       : null;
-    const now = Date.now();
+    const now = modalTime ? new Date(modalTime).getTime() : Date.now();
     let entry;
     if (modal === "drinking") {
       entry = buildDrinkEntry({
@@ -642,6 +644,19 @@ export default function BabyTracker() {
                 />
               </div>
             ) : null}
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 13, color: "#888", display: "block", marginBottom: 6 }}>Time</label>
+              <input
+                type="datetime-local"
+                value={modalTime}
+                onChange={e => setModalTime(e.target.value)}
+                style={{
+                  width: "100%", padding: "12px 16px", borderRadius: 12, border: "2px solid #eee",
+                  fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "inherit",
+                }}
+              />
+            </div>
 
             <div style={{ marginBottom: 20 }}>
               <label style={{ fontSize: 13, color: "#888", display: "block", marginBottom: 6 }}>Note (optional)</label>
