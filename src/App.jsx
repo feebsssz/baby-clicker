@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 
-const SUPABASE_URL = "https://xulinmyvgpvrqpjsgpym.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh1bGlubXl2Z3B2cnFwanNncHltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyODgxMTYsImV4cCI6MjA5Mzg2NDExNn0.DQQdhdV_PYvwSp7R4wsYULRW6gtIdphSlmobKZLKUEA";
-const FAMILY_CODE = "Lele2026";
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const FAMILY_CODE = import.meta.env.VITE_FAMILY_CODE;
 
 const headers = {
   "Content-Type": "application/json",
