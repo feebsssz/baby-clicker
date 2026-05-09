@@ -1,0 +1,462 @@
+import { useState, useEffect, useCallback } from "react";
+
+const SUPABASE_URL = "https://xulinmyvgpvrqpjsgpym.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh1bGlubXl2Z3B2cnFwanNncHltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyODgxMTYsImV4cCI6MjA5Mzg2NDExNn0.DQQdhdV_PYvwSp7R4wsYULRW6gtIdphSlmobKZLKUEA";
+const FAMILY_CODE = "Lele2026";
+
+const headers = {
+  "Content-Type": "application/json",
+  "apikey": SUPABASE_ANON_KEY,
+  "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+  "Prefer": "return=representation",
+};
+
+async function dbFetch() {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/logs?family_code=eq.${FAMILY_CODE}&order=ts.desc&limit=200`,
+    { headers }
+  );
+  if (!res.ok) throw new Error("Fetch failed");
+  return res.json();
+}
+
+async function dbInsert(entry) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/logs`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      id: entry.id,
+      family_code: FAMILY_CODE,
+      type: entry.type,
+      drink_type: entry.drinkType || null,
+      ts: entry.ts,
+      amount: entry.amount || null,
+      note: entry.note || null,
+    }),
+  });
+  if (!res.ok) throw new Error("Insert failed");
+}
+
+async function dbDelete(id) {
+  await fetch(`${SUPABASE_URL}/rest/v1/logs?id=eq.${id}`, {
+    method: "DELETE",
+    headers,
+  });
+}
+
+const categories = {
+  drinking: { label: "Drinking", emoji: "🍼", color: "#e8a598", askAmount: true },
+  diaper_wet: { label: "Wet Diaper", emoji: "💧", color: "#b8d4b8", askAmount: false },
+  diaper_solid: { label: "Dirty Diaper", emoji: "💩", color: "#c4b18a", askAmount: false },
+  pump: { label: "Pump", emoji: "🥛", color: "#d4c5e2", askAmount: true },
+};
+
+const drinkTypes = [
+  { key: "breast", label: "Breast Milk", emoji: "🤱" },
+  { key: "formula", label: "Formula", emoji: "🧴" },
+  { key: "both", label: "Both", emoji: "🤱+🧴" },
+];
+
+function formatTime(ts) {
+  return new Date(ts).toLocaleTimeString("no-NO", { hour: "2-digit", minute: "2-digit" });
+}
+function formatDate(ts) {
+  return new Date(ts).toLocaleDateString("no-NO", { weekday: "short", day: "numeric", month: "short" });
+}
+function todayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+function getCat(type) {
+  return categories[type] || { label: type, emoji: "❓", color: "#ccc", askAmount: false };
+}
+function drinkLabel(log) {
+  const dt = drinkTypes.find(d => d.key === log.drinkType || d.key === log.drink_type);
+  return dt ? ` · ${dt.emoji} ${dt.label}` : "";
+}
+function normalizeLog(row) {
+  return {
+    id: row.id,
+    type: row.type,
+    drinkType: row.drink_type || null,
+    ts: row.ts,
+    amount: row.amount || null,
+    note: row.note || null,
+  };
+}
+
+export default function BabyTracker() {
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [error, setError] = useState(null);
+  const [view, setView] = useState("home");
+  const [modal, setModal] = useState(null);
+  const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
+  const [drinkType, setDrinkType] = useState("breast");
+  const [justLogged, setJustLogged] = useState(null);
+
+  const loadLogs = useCallback(async () => {
+    try {
+      const rows = await dbFetch();
+      setLogs(rows.map(normalizeLog));
+      setError(null);
+    } catch (e) {
+      setError("Could not load data. Check connection.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadLogs();
+    const interval = setInterval(loadLogs, 30000);
+    return () => clearInterval(interval);
+  }, [loadLogs]);
+
+  function openModal(type) {
+    setModal(type);
+    setAmount("");
+    setNote("");
+    setDrinkType("breast");
+  }
+
+  async function confirmLog() {
+    const entry = {
+      id: Date.now(),
+      type: modal,
+      drinkType: modal === "drinking" ? drinkType : null,
+      ts: Date.now(),
+      amount: categories[modal].askAmount ? (parseFloat(amount) || null) : null,
+      note,
+    };
+    setLogs(prev => [entry, ...prev]);
+    setModal(null);
+    setJustLogged(entry);
+    setTimeout(() => setJustLogged(null), 2500);
+    setSyncing(true);
+    try {
+      await dbInsert(entry);
+    } catch {
+      setError("Saved locally but couldn't sync. Will retry on refresh.");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  async function deleteLog(id) {
+    setLogs(prev => prev.filter(l => l.id !== id));
+    try {
+      await dbDelete(id);
+    } catch {
+      setError("Could not delete from server.");
+    }
+  }
+
+  const today = todayKey();
+  const todayLogs = logs.filter(l => new Date(l.ts).toISOString().slice(0, 10) === today);
+  const totalDrinking = todayLogs.filter(l => l.type === "drinking").reduce((s, l) => s + (l.amount || 0), 0);
+  const totalPump = todayLogs.filter(l => l.type === "pump").reduce((s, l) => s + (l.amount || 0), 0);
+  const wetDiapers = todayLogs.filter(l => l.type === "diaper_wet").length;
+  const solidDiapers = todayLogs.filter(l => l.type === "diaper_solid").length;
+
+  const grouped = logs.reduce((acc, l) => {
+    const d = new Date(l.ts).toISOString().slice(0, 10);
+    if (!acc[d]) acc[d] = [];
+    acc[d].push(l);
+    return acc;
+  }, {});
+  const sortedDates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
+
+  if (loading) return (
+    <div style={{
+      minHeight: "100vh", display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center",
+      background: "linear-gradient(160deg, #fdf6f0 0%, #f0f4f8 100%)",
+      fontFamily: "'Georgia', serif", color: "#3a3028", gap: 16,
+    }}>
+      <div style={{ fontSize: 48 }}>👶</div>
+      <div style={{ fontSize: 16, color: "#aaa" }}>Loading Léon's tracker…</div>
+    </div>
+  );
+
+  return (
+    <div style={{
+      minHeight: "100vh",
+      background: "linear-gradient(160deg, #fdf6f0 0%, #f0f4f8 100%)",
+      fontFamily: "'Georgia', 'Times New Roman', serif",
+      color: "#3a3028", maxWidth: 430, margin: "0 auto", position: "relative",
+    }}>
+      <div style={{
+        padding: "28px 24px 16px",
+        borderBottom: "1px solid rgba(0,0,0,0.06)",
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+      }}>
+        <div>
+          <div style={{ fontSize: 22, fontWeight: "bold", letterSpacing: "-0.5px" }}>Léon's Clicker 👶</div>
+          <div style={{ fontSize: 13, color: "#888", marginTop: 2, display: "flex", alignItems: "center", gap: 6 }}>
+            {new Date().toLocaleDateString("no-NO", { weekday: "long", day: "numeric", month: "long" })}
+            {syncing && <span style={{ fontSize: 11, color: "#b8d4b8" }}>● syncing</span>}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <TabBtn active={view === "home"} onClick={() => setView("home")}>Log</TabBtn>
+          <TabBtn active={view === "summary"} onClick={() => setView("summary")}>Summary</TabBtn>
+        </div>
+      </div>
+
+      {error && (
+        <div style={{
+          margin: "12px 20px 0", padding: "10px 14px",
+          background: "#fff3f0", borderRadius: 10, fontSize: 13, color: "#c0645a",
+        }}>
+          ⚠️ {error}
+        </div>
+      )}
+
+      {view === "home" && (
+        <div style={{ padding: "20px 20px 100px" }}>
+          <div style={{
+            background: "white", borderRadius: 16, padding: "14px 18px",
+            marginBottom: 24, boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
+            display: "flex", gap: 12, flexWrap: "wrap",
+          }}>
+            <Stat label="Drinking" value={totalDrinking ? `${totalDrinking}ml` : "—"} color="#e8a598" />
+            <Stat label="Pump" value={totalPump ? `${totalPump}ml` : "—"} color="#d4c5e2" />
+            <Stat label="Diapers" value={(wetDiapers + solidDiapers) > 0 ? `${wetDiapers}💧 ${solidDiapers}💩` : "—"} color="#b8d4b8" />
+            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center" }}>
+              <button onClick={loadLogs} style={{
+                background: "none", border: "none", cursor: "pointer", fontSize: 18, padding: 4, color: "#ccc",
+              }}>↻</button>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 24 }}>
+            {Object.entries(categories).map(([key, cat]) => (
+              <button key={key} onClick={() => openModal(key)} style={{
+                background: "white", border: `2px solid ${cat.color}`,
+                borderRadius: 18, padding: "22px 12px", cursor: "pointer",
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+                boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+              }}
+                onMouseDown={e => e.currentTarget.style.transform = "scale(0.96)"}
+                onMouseUp={e => e.currentTarget.style.transform = "scale(1)"}
+                onTouchStart={e => e.currentTarget.style.transform = "scale(0.96)"}
+                onTouchEnd={e => e.currentTarget.style.transform = "scale(1)"}
+              >
+                <span style={{ fontSize: 34 }}>{cat.emoji}</span>
+                <span style={{ fontSize: 13, fontWeight: "600" }}>{cat.label}</span>
+              </button>
+            ))}
+          </div>
+
+          <div style={{ fontSize: 12, fontWeight: "700", letterSpacing: 1, color: "#aaa", textTransform: "uppercase", marginBottom: 10 }}>
+            Today
+          </div>
+          {todayLogs.length === 0 && (
+            <div style={{ color: "#bbb", fontSize: 14, textAlign: "center", padding: "30px 0" }}>
+              No entries yet. Tap a button above!
+            </div>
+          )}
+          {todayLogs.map(log => {
+            const cat = getCat(log.type);
+            return (
+              <div key={log.id} style={{
+                display: "flex", alignItems: "center", padding: "10px 14px",
+                background: "white", borderRadius: 12, marginBottom: 8,
+                boxShadow: "0 1px 4px rgba(0,0,0,0.05)", gap: 12,
+              }}>
+                <span style={{
+                  width: 36, height: 36, borderRadius: "50%", background: cat.color + "33",
+                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0,
+                }}>{cat.emoji}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: "600" }}>
+                    {cat.label}
+                    {log.drinkType && <span style={{ fontSize: 12, color: "#aaa", fontWeight: "400" }}>{drinkLabel(log)}</span>}
+                  </div>
+                  {log.amount && <div style={{ fontSize: 12, color: "#888" }}>{log.amount} ml</div>}
+                  {log.note && <div style={{ fontSize: 11, color: "#aaa" }}>{log.note}</div>}
+                </div>
+                <div style={{ fontSize: 13, color: "#aaa", fontVariantNumeric: "tabular-nums" }}>{formatTime(log.ts)}</div>
+                <button onClick={() => deleteLog(log.id)} style={{
+                  background: "none", border: "none", cursor: "pointer", color: "#ddd", fontSize: 18, padding: "4px", lineHeight: 1,
+                }}>×</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {view === "summary" && (
+        <div style={{ padding: "20px 20px 80px" }}>
+          {sortedDates.length === 0 && (
+            <div style={{ color: "#bbb", fontSize: 14, textAlign: "center", padding: "40px 0" }}>No data yet.</div>
+          )}
+          {sortedDates.map(date => {
+            const dayLogs = grouped[date];
+            const dDrink = dayLogs.filter(l => l.type === "drinking").reduce((s, l) => s + (l.amount || 0), 0);
+            const dBreast = dayLogs.filter(l => l.type === "drinking" && l.drinkType === "breast").reduce((s, l) => s + (l.amount || 0), 0);
+            const dFormula = dayLogs.filter(l => l.type === "drinking" && l.drinkType === "formula").reduce((s, l) => s + (l.amount || 0), 0);
+            const dPump = dayLogs.filter(l => l.type === "pump").reduce((s, l) => s + (l.amount || 0), 0);
+            const dWet = dayLogs.filter(l => l.type === "diaper_wet").length;
+            const dSolid = dayLogs.filter(l => l.type === "diaper_solid").length;
+            return (
+              <div key={date} style={{
+                background: "white", borderRadius: 16, padding: "16px 18px",
+                marginBottom: 16, boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+              }}>
+                <div style={{ fontWeight: "700", fontSize: 15, marginBottom: 12 }}>
+                  {formatDate(new Date(date + "T12:00:00").getTime())}
+                </div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12, alignItems: "flex-start" }}>
+                  {dDrink > 0 && (
+                    <div>
+                      <Stat label="Total Drinking" value={`${dDrink}ml`} color="#e8a598" />
+                      {(dBreast > 0 || dFormula > 0) && (
+                        <div style={{ fontSize: 11, color: "#bbb", marginTop: 4, paddingLeft: 2 }}>
+                          {dBreast > 0 && `🤱 ${dBreast}ml`}{dBreast > 0 && dFormula > 0 && "  "}{dFormula > 0 && `🧴 ${dFormula}ml`}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {dPump > 0 && <Stat label="Pump" value={`${dPump}ml`} color="#d4c5e2" />}
+                  {(dWet + dSolid) > 0 && <Stat label="Diapers" value={`${dWet}💧 ${dSolid}💩`} color="#b8d4b8" />}
+                </div>
+                <div style={{ borderTop: "1px solid #f0f0f0", paddingTop: 10 }}>
+                  {dayLogs.map(log => {
+                    const cat = getCat(log.type);
+                    return (
+                      <div key={log.id} style={{
+                        display: "flex", alignItems: "center", gap: 8, fontSize: 13, padding: "4px 0", color: "#666",
+                      }}>
+                        <span>{cat.emoji}</span>
+                        <span style={{ flex: 1 }}>
+                          {cat.label}
+                          {log.drinkType && <span style={{ color: "#bbb" }}>{drinkLabel(log)}</span>}
+                          {log.amount ? ` — ${log.amount}ml` : ""}
+                        </span>
+                        <span style={{ color: "#bbb", fontVariantNumeric: "tabular-nums" }}>{formatTime(log.ts)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {modal && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)",
+          display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 100,
+        }} onClick={() => setModal(null)}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background: "white", borderRadius: "24px 24px 0 0",
+            padding: "28px 24px 44px", width: "100%", maxWidth: 430,
+            boxShadow: "0 -4px 30px rgba(0,0,0,0.1)",
+          }}>
+            <div style={{ textAlign: "center", marginBottom: 20 }}>
+              <div style={{ fontSize: 44, marginBottom: 6 }}>{categories[modal].emoji}</div>
+              <div style={{ fontSize: 18, fontWeight: "700" }}>{categories[modal].label}</div>
+              <div style={{ fontSize: 12, color: "#aaa", marginTop: 4 }}>
+                {new Date().toLocaleTimeString("no-NO", { hour: "2-digit", minute: "2-digit" })}
+              </div>
+            </div>
+
+            {modal === "drinking" && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ fontSize: 13, color: "#888", display: "block", marginBottom: 8 }}>Type</label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {drinkTypes.map(dt => (
+                    <button key={dt.key} onClick={() => setDrinkType(dt.key)} style={{
+                      flex: 1, padding: "10px 6px", borderRadius: 12,
+                      border: `2px solid ${drinkType === dt.key ? "#e8a598" : "#eee"}`,
+                      background: drinkType === dt.key ? "#e8a59820" : "white",
+                      cursor: "pointer", fontSize: 12, fontWeight: "600",
+                      color: drinkType === dt.key ? "#3a3028" : "#aaa",
+                      fontFamily: "inherit",
+                      display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                    }}>
+                      <span style={{ fontSize: 20 }}>{dt.emoji}</span>
+                      <span>{dt.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {categories[modal].askAmount && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ fontSize: 13, color: "#888", display: "block", marginBottom: 6 }}>Amount (ml)</label>
+                <input
+                  type="number" inputMode="numeric" placeholder="e.g. 80"
+                  value={amount} onChange={e => setAmount(e.target.value)}
+                  style={{
+                    width: "100%", padding: "14px 16px", borderRadius: 12, border: "2px solid #eee",
+                    fontSize: 22, textAlign: "center", outline: "none", boxSizing: "border-box", fontFamily: "inherit",
+                  }}
+                  autoFocus
+                />
+              </div>
+            )}
+
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ fontSize: 13, color: "#888", display: "block", marginBottom: 6 }}>Note (optional)</label>
+              <input
+                type="text" placeholder="e.g. fussy, fell asleep..."
+                value={note} onChange={e => setNote(e.target.value)}
+                style={{
+                  width: "100%", padding: "12px 16px", borderRadius: 12, border: "2px solid #eee",
+                  fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "inherit",
+                }}
+              />
+            </div>
+
+            <button onClick={confirmLog} style={{
+              width: "100%", padding: "16px", background: categories[modal].color,
+              border: "none", borderRadius: 14, fontSize: 16, fontWeight: "700",
+              color: "white", cursor: "pointer", fontFamily: "inherit",
+            }}>
+              Save Log
+            </button>
+          </div>
+        </div>
+      )}
+
+      {justLogged && (
+        <div style={{
+          position: "fixed", bottom: 32, left: "50%", transform: "translateX(-50%)",
+          background: "#3a3028", color: "white", padding: "12px 22px", borderRadius: 50,
+          fontSize: 14, fontWeight: "600", boxShadow: "0 4px 16px rgba(0,0,0,0.2)",
+          zIndex: 200, whiteSpace: "nowrap",
+        }}>
+          {categories[justLogged.type].emoji} Logged at {formatTime(justLogged.ts)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TabBtn({ active, onClick, children }) {
+  return (
+    <button onClick={onClick} style={{
+      background: active ? "#3a3028" : "transparent",
+      color: active ? "white" : "#aaa",
+      border: "none", borderRadius: 20, padding: "6px 14px",
+      fontSize: 13, fontWeight: "600", cursor: "pointer", fontFamily: "inherit",
+    }}>
+      {children}
+    </button>
+  );
+}
+
+function Stat({ label, value, color }) {
+  return (
+    <div style={{ background: color + "22", borderRadius: 10, padding: "7px 12px", minWidth: 60 }}>
+      <div style={{ fontSize: 11, color: "#999", marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: 14, fontWeight: "700", color: "#3a3028" }}>{value}</div>
+    </div>
+  );
+}
