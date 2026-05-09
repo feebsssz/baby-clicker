@@ -115,6 +115,8 @@ export default function BabyTracker() {
   // Quick log modal
   const [modal, setModal] = useState(null);
   const [amount, setAmount] = useState("");
+  const [breastAmount, setBreastAmount] = useState("");
+  const [formulaAmount, setFormulaAmount] = useState("");
   const [note, setNote] = useState("");
   const [drinkType, setDrinkType] = useState("breast");
   const [diaperWet, setDiaperWet] = useState(true);
@@ -126,6 +128,8 @@ export default function BabyTracker() {
   const [manualType, setManualType] = useState("drinking");
   const [manualDateTime, setManualDateTime] = useState("");
   const [manualAmount, setManualAmount] = useState("");
+  const [manualBreastAmount, setManualBreastAmount] = useState("");
+  const [manualFormulaAmount, setManualFormulaAmount] = useState("");
   const [manualNote, setManualNote] = useState("");
   const [manualDrinkType, setManualDrinkType] = useState("breast");
   const [manualDiaperWet, setManualDiaperWet] = useState(true);
@@ -152,6 +156,8 @@ export default function BabyTracker() {
   function openModal(type) {
     setModal(type);
     setAmount("");
+    setBreastAmount("");
+    setFormulaAmount("");
     setNote("");
     setDrinkType("breast");
     setDiaperWet(true);
@@ -163,6 +169,8 @@ export default function BabyTracker() {
     setManualType("drinking");
     setManualDateTime(nowDateTimeLocal());
     setManualAmount("");
+    setManualBreastAmount("");
+    setManualFormulaAmount("");
     setManualNote("");
     setManualDrinkType("breast");
     setManualDiaperWet(true);
@@ -187,18 +195,45 @@ export default function BabyTracker() {
     }
   }
 
+  function buildDrinkEntry({ type, drinkType, breastAmt, formulaAmt, singleAmt, noteText, ts, id }) {
+    let totalAmount = null;
+    let autoNote = "";
+    if (drinkType === "both") {
+      const b = parseFloat(breastAmt) || 0;
+      const f = parseFloat(formulaAmt) || 0;
+      totalAmount = (b + f) || null;
+      const parts = [];
+      if (b) parts.push(`🤱 ${b}ml`);
+      if (f) parts.push(`🧴 ${f}ml`);
+      autoNote = parts.join(" + ");
+    } else {
+      totalAmount = parseFloat(singleAmt) || null;
+    }
+    const finalNote = [autoNote, noteText].filter(Boolean).join(" · ") || null;
+    return { id, type, drinkType, ts, amount: totalAmount, note: finalNote };
+  }
+
   async function confirmLog() {
     const subType = modal === "diaper"
       ? (diaperWet && diaperSolid ? "both" : diaperWet ? "wet" : "solid")
       : null;
-    const entry = {
-      id: Date.now(),
-      type: modal,
-      drinkType: modal === "drinking" ? drinkType : subType,
-      ts: Date.now(),
-      amount: categories[modal].askAmount ? (parseFloat(amount) || null) : null,
-      note,
-    };
+    const now = Date.now();
+    let entry;
+    if (modal === "drinking") {
+      entry = buildDrinkEntry({
+        id: now, type: modal, drinkType, ts: now,
+        breastAmt: breastAmount, formulaAmt: formulaAmount,
+        singleAmt: amount, noteText: note,
+      });
+    } else {
+      entry = {
+        id: now, type: modal,
+        drinkType: subType,
+        ts: now,
+        amount: categories[modal].askAmount ? (parseFloat(amount) || null) : null,
+        note,
+      };
+    }
     setModal(null);
     await saveEntry(entry);
   }
@@ -209,14 +244,21 @@ export default function BabyTracker() {
     const subType = manualType === "diaper"
       ? (manualDiaperWet && manualDiaperSolid ? "both" : manualDiaperWet ? "wet" : "solid")
       : null;
-    const entry = {
-      id: Date.now() + Math.floor(Math.random() * 1000),
-      type: manualType,
-      drinkType: manualType === "drinking" ? manualDrinkType : subType,
-      ts,
-      amount: (manualType === "drinking" || manualType === "pump") ? (parseFloat(manualAmount) || null) : null,
-      note: manualNote,
-    };
+    const id = Date.now() + Math.floor(Math.random() * 1000);
+    let entry;
+    if (manualType === "drinking") {
+      entry = buildDrinkEntry({
+        id, type: manualType, drinkType: manualDrinkType, ts,
+        breastAmt: manualBreastAmount, formulaAmt: manualFormulaAmount,
+        singleAmt: manualAmount, noteText: manualNote,
+      });
+    } else {
+      entry = {
+        id, type: manualType, drinkType: subType, ts,
+        amount: manualType === "pump" ? (parseFloat(manualAmount) || null) : null,
+        note: manualNote,
+      };
+    }
     setManualOpen(false);
     await saveEntry(entry);
   }
@@ -514,7 +556,28 @@ export default function BabyTracker() {
               </div>
             )}
 
-            {modalCat.askAmount && (
+            {modal === "drinking" && drinkType === "both" ? (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ fontSize: 13, color: "#888", display: "block", marginBottom: 8 }}>Amount (ml)</label>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, color: "#aaa", textAlign: "center", marginBottom: 4 }}>🤱 Breast</div>
+                    <input type="number" inputMode="numeric" placeholder="0"
+                      value={breastAmount} onChange={e => setBreastAmount(e.target.value)}
+                      autoFocus
+                      style={{ width: "100%", padding: "14px 8px", borderRadius: 12, border: "2px solid #eee", fontSize: 22, textAlign: "center", outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, color: "#aaa", textAlign: "center", marginBottom: 4 }}>🧴 Formula</div>
+                    <input type="number" inputMode="numeric" placeholder="0"
+                      value={formulaAmount} onChange={e => setFormulaAmount(e.target.value)}
+                      style={{ width: "100%", padding: "14px 8px", borderRadius: 12, border: "2px solid #eee", fontSize: 22, textAlign: "center", outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : modalCat.askAmount ? (
               <div style={{ marginBottom: 16 }}>
                 <label style={{ fontSize: 13, color: "#888", display: "block", marginBottom: 6 }}>Amount (ml)</label>
                 <input
@@ -527,7 +590,7 @@ export default function BabyTracker() {
                   autoFocus
                 />
               </div>
-            )}
+            ) : null}
 
             <div style={{ marginBottom: 20 }}>
               <label style={{ fontSize: 13, color: "#888", display: "block", marginBottom: 6 }}>Note (optional)</label>
@@ -635,7 +698,27 @@ export default function BabyTracker() {
               </div>
             )}
 
-            {(manualType === "drinking" || manualType === "pump") && (
+            {manualType === "drinking" && manualDrinkType === "both" ? (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ fontSize: 13, color: "#888", display: "block", marginBottom: 8 }}>Amount (ml)</label>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, color: "#aaa", textAlign: "center", marginBottom: 4 }}>🤱 Breast</div>
+                    <input type="number" inputMode="numeric" placeholder="0"
+                      value={manualBreastAmount} onChange={e => setManualBreastAmount(e.target.value)}
+                      style={{ width: "100%", padding: "14px 8px", borderRadius: 12, border: "2px solid #eee", fontSize: 22, textAlign: "center", outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, color: "#aaa", textAlign: "center", marginBottom: 4 }}>🧴 Formula</div>
+                    <input type="number" inputMode="numeric" placeholder="0"
+                      value={manualFormulaAmount} onChange={e => setManualFormulaAmount(e.target.value)}
+                      style={{ width: "100%", padding: "14px 8px", borderRadius: 12, border: "2px solid #eee", fontSize: 22, textAlign: "center", outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : (manualType === "drinking" || manualType === "pump") ? (
               <div style={{ marginBottom: 16 }}>
                 <label style={{ fontSize: 13, color: "#888", display: "block", marginBottom: 6 }}>Amount (ml)</label>
                 <input
@@ -647,7 +730,7 @@ export default function BabyTracker() {
                   }}
                 />
               </div>
-            )}
+            ) : null}
 
             <div style={{ marginBottom: 20 }}>
               <label style={{ fontSize: 13, color: "#888", display: "block", marginBottom: 6 }}>Note (optional)</label>
