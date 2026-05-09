@@ -141,6 +141,7 @@ export default function BabyTracker() {
   const [modalTime, setModalTime] = useState("");
   const [justLogged, setJustLogged] = useState(null);
   const [expanded, setExpanded] = useState(new Set(["drinking", "diaper", "pump"]));
+  const [expandedDays, setExpandedDays] = useState(new Set());
 
   // Manual entry modal (also used for editing)
   const [manualOpen, setManualOpen] = useState(false);
@@ -556,53 +557,69 @@ export default function BabyTracker() {
             const dPump = dayLogs.filter(l => l.type === "pump").reduce((s, l) => s + (l.amount || 0), 0);
             const dWet = dayLogs.filter(isWet).length;
             const dSolid = dayLogs.filter(isSolid).length;
+            const isDayExp = expandedDays.has(date);
+            const toggleDay = () => setExpandedDays(prev => {
+              const next = new Set(prev);
+              if (next.has(date)) next.delete(date);
+              else next.add(date);
+              return next;
+            });
             return (
               <div key={date} style={{
-                background: "white", borderRadius: 16, padding: "16px 18px",
-                marginBottom: 16, boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+                background: "white", borderRadius: 16,
+                marginBottom: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.05)", overflow: "hidden",
               }}>
-                <div style={{ fontWeight: "700", fontSize: 15, marginBottom: 12 }}>
-                  {formatDate(new Date(date + "T12:00:00").getTime())}
-                </div>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12, alignItems: "flex-start" }}>
-                  {dDrink > 0 && (
-                    <div>
-                      <Stat label="Drinking" value={`${dDrink}ml`} color="#e8a598" />
-                      {(dBreast > 0 || dFormula > 0) && (
-                        <div style={{ fontSize: 11, color: "#bbb", marginTop: 4, paddingLeft: 2 }}>
-                          {dBreast > 0 && `🤱 ${dBreast}ml`}{dBreast > 0 && dFormula > 0 && "  "}{dFormula > 0 && `🥛 ${dFormula}ml`}
-                        </div>
-                      )}
+                <div onClick={toggleDay} style={{ padding: "16px 18px", cursor: "pointer" }}>
+                  <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
+                    <div style={{ fontWeight: "700", fontSize: 15, flex: 1 }}>
+                      {formatDate(new Date(date + "T12:00:00").getTime())}
                     </div>
-                  )}
-                  {dPump > 0 && <Stat label="Pump" value={`${dPump}ml`} color="#d4c5e2" />}
-                  {(dWet + dSolid) > 0 && <Stat label="Diapers" value={`${dWet}💧 ${dSolid}💩`} color="#b8d4b8" />}
-                </div>
-                <div style={{ borderTop: "1px solid #f0f0f0", paddingTop: 10 }}>
-                  {dayLogs.map(log => {
-                    const cat = getCat(log.type, log.drinkType);
-                    return (
-                      <div key={log.id} style={{
-                        display: "flex", alignItems: "center", gap: 8, fontSize: 13, padding: "4px 0", color: "#666",
-                      }}>
-                        <span>{cat.emoji}</span>
-                        <span style={{ flex: 1 }}>
-                          {cat.label}
-                          {log.type === "drinking" && log.drinkType && <span style={{ color: "#bbb" }}>{drinkLabel(log)}</span>}
-                          {log.amount ? ` — ${log.amount}ml` : ""}
-                          {log.note ? <span style={{ color: "#bbb" }}> · {log.note}</span> : ""}
-                        </span>
-                        <span style={{ color: "#bbb", fontVariantNumeric: "tabular-nums" }}>{formatTime(log.ts)}</span>
-                        <button onClick={() => openEdit(log)} style={{
-                          background: "none", border: "none", cursor: "pointer", color: "#ccc", fontSize: 14, padding: "2px 4px", lineHeight: 1,
-                        }}>✎</button>
-                        <button onClick={() => deleteLog(log.id)} style={{
-                          background: "none", border: "none", cursor: "pointer", color: "#ddd", fontSize: 16, padding: "2px 4px", lineHeight: 1,
-                        }}>×</button>
+                    <span style={{ color: "#ccc", fontSize: 13 }}>{isDayExp ? "▾" : "▸"}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-start" }}>
+                    {dDrink > 0 && (
+                      <div>
+                        <Stat label="Drinking" value={`${dDrink}ml`} color="#e8a598" />
+                        {(dBreast > 0 || dFormula > 0) && (
+                          <div style={{ fontSize: 11, color: "#bbb", marginTop: 4, paddingLeft: 2 }}>
+                            {dBreast > 0 && `🤱 ${dBreast}ml`}{dBreast > 0 && dFormula > 0 && "  "}{dFormula > 0 && `🥛 ${dFormula}ml`}
+                          </div>
+                        )}
                       </div>
-                    );
-                  })}
+                    )}
+                    {dPump > 0 && <Stat label="Pump" value={`${dPump}ml`} color="#d4c5e2" />}
+                    {(dWet + dSolid) > 0 && <Stat label="Diapers" value={`${dWet}💧 ${dSolid}💩`} color="#b8d4b8" />}
+                  </div>
                 </div>
+                {isDayExp && (
+                  <div style={{ borderTop: "1px solid #f0f0f0" }}>
+                    {dayLogs.map((log, i) => {
+                      const cat = getCat(log.type, log.drinkType);
+                      return (
+                        <div key={log.id} style={{
+                          display: "flex", alignItems: "center", gap: 8, fontSize: 13,
+                          padding: "8px 18px", color: "#666",
+                          borderBottom: i < dayLogs.length - 1 ? "1px solid #f8f8f8" : "none",
+                        }}>
+                          <span>{cat.emoji}</span>
+                          <span style={{ flex: 1 }}>
+                            {cat.label}
+                            {log.type === "drinking" && log.drinkType && <span style={{ color: "#bbb" }}>{drinkLabel(log)}</span>}
+                            {log.amount ? ` — ${log.amount}ml` : ""}
+                            {log.note ? <span style={{ color: "#bbb" }}> · {log.note}</span> : ""}
+                          </span>
+                          <span style={{ color: "#bbb", fontVariantNumeric: "tabular-nums" }}>{formatTime(log.ts)}</span>
+                          <button onClick={() => openEdit(log)} style={{
+                            background: "none", border: "none", cursor: "pointer", color: "#ccc", fontSize: 14, padding: "2px 4px", lineHeight: 1,
+                          }}>✎</button>
+                          <button onClick={() => deleteLog(log.id)} style={{
+                            background: "none", border: "none", cursor: "pointer", color: "#ddd", fontSize: 16, padding: "2px 4px", lineHeight: 1,
+                          }}>×</button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })}
