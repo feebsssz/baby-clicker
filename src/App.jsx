@@ -62,8 +62,13 @@ function formatTime(ts) {
 function formatDate(ts) {
   return new Date(ts).toLocaleDateString("no-NO", { weekday: "short", day: "numeric", month: "short" });
 }
+function dateKey(ts) {
+  const d = new Date(ts);
+  const pad = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
 function todayKey() {
-  return new Date().toISOString().slice(0, 10);
+  return dateKey(Date.now());
 }
 function nowDateTimeLocal() {
   const d = new Date();
@@ -273,14 +278,14 @@ export default function BabyTracker() {
   }
 
   const today = todayKey();
-  const todayLogs = logs.filter(l => new Date(l.ts).toISOString().slice(0, 10) === today);
+  const todayLogs = logs.filter(l => dateKey(l.ts) === today);
   const totalDrinking = todayLogs.filter(l => l.type === "drinking").reduce((s, l) => s + (l.amount || 0), 0);
   const totalPump = todayLogs.filter(l => l.type === "pump").reduce((s, l) => s + (l.amount || 0), 0);
   const wetDiapers = todayLogs.filter(isWet).length;
   const solidDiapers = todayLogs.filter(isSolid).length;
 
   const grouped = logs.reduce((acc, l) => {
-    const d = new Date(l.ts).toISOString().slice(0, 10);
+    const d = dateKey(l.ts);
     if (!acc[d]) acc[d] = [];
     acc[d].push(l);
     return acc;
