@@ -140,6 +140,7 @@ export default function BabyTracker() {
   const [diaperSolid, setDiaperSolid] = useState(false);
   const [modalTime, setModalTime] = useState("");
   const [justLogged, setJustLogged] = useState(null);
+  const [expanded, setExpanded] = useState(new Set(["drinking", "diaper", "pump"]));
 
   // Manual entry modal (also used for editing)
   const [manualOpen, setManualOpen] = useState(false);
@@ -307,6 +308,15 @@ export default function BabyTracker() {
     }
   }
 
+  function toggleExpanded(key) {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
   async function deleteLog(id) {
     setLogs(prev => prev.filter(l => l.id !== id));
     try {
@@ -449,35 +459,76 @@ export default function BabyTracker() {
               No entries yet. Tap a button above!
             </div>
           )}
-          {todayLogs.map(log => {
-            const cat = getCat(log.type, log.drinkType);
+          {["drinking", "diaper", "pump"].map(catKey => {
+            const cat = categories[catKey];
+            const catLogs = todayLogs.filter(l =>
+              catKey === "diaper"
+                ? (l.type === "diaper" || l.type === "diaper_wet" || l.type === "diaper_solid")
+                : l.type === catKey
+            );
+            if (catLogs.length === 0) return null;
+            const isExp = expanded.has(catKey);
+
+            let summary = "";
+            if (catKey === "drinking") {
+              const total = catLogs.reduce((s, l) => s + (l.amount || 0), 0);
+              summary = `×${catLogs.length}${total ? ` — ${total}ml` : ""}`;
+            } else if (catKey === "diaper") {
+              const wet = catLogs.filter(isWet).length;
+              const solid = catLogs.filter(isSolid).length;
+              summary = `×${catLogs.length} — ${wet}💧 ${solid}💩`;
+            } else {
+              const total = catLogs.reduce((s, l) => s + (l.amount || 0), 0);
+              summary = `×${catLogs.length}${total ? ` — ${total}ml` : ""}`;
+            }
+
             return (
-              <div key={log.id} style={{
-                display: "flex", alignItems: "center", padding: "10px 14px",
+              <div key={catKey} style={{
                 background: "white", borderRadius: 12, marginBottom: 8,
-                boxShadow: "0 1px 4px rgba(0,0,0,0.05)", gap: 12,
+                boxShadow: "0 1px 4px rgba(0,0,0,0.05)", overflow: "hidden",
               }}>
-                <span style={{
-                  width: 36, height: 36, borderRadius: "50%", background: cat.color + "33",
-                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0,
-                }}>{cat.emoji}</span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14, fontWeight: "600" }}>
-                    {cat.label}
-                    {log.type === "drinking" && log.drinkType && (
-                      <span style={{ fontSize: 12, color: "#aaa", fontWeight: "400" }}>{drinkLabel(log)}</span>
-                    )}
+                <div onClick={() => toggleExpanded(catKey)} style={{
+                  display: "flex", alignItems: "center", padding: "12px 14px",
+                  cursor: "pointer", gap: 12,
+                  borderBottom: isExp ? "1px solid #f0f0f0" : "none",
+                }}>
+                  <span style={{
+                    width: 36, height: 36, borderRadius: "50%", background: cat.color + "33",
+                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0,
+                  }}>{cat.emoji}</span>
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontSize: 14, fontWeight: "600" }}>{cat.label}</span>
+                    <span style={{ fontSize: 12, color: "#aaa", marginLeft: 6 }}>{summary}</span>
                   </div>
-                  {log.amount && <div style={{ fontSize: 12, color: "#888" }}>{log.amount} ml</div>}
-                  {log.note && <div style={{ fontSize: 11, color: "#aaa" }}>{log.note}</div>}
+                  <span style={{ color: "#ccc", fontSize: 13 }}>{isExp ? "▾" : "▸"}</span>
                 </div>
-                <div style={{ fontSize: 13, color: "#aaa", fontVariantNumeric: "tabular-nums" }}>{formatTime(log.ts)}</div>
-                <button onClick={() => openEdit(log)} style={{
-                  background: "none", border: "none", cursor: "pointer", color: "#ccc", fontSize: 15, padding: "4px", lineHeight: 1,
-                }}>✎</button>
-                <button onClick={() => deleteLog(log.id)} style={{
-                  background: "none", border: "none", cursor: "pointer", color: "#ddd", fontSize: 18, padding: "4px", lineHeight: 1,
-                }}>×</button>
+                {isExp && catLogs.map((log, i) => {
+                  const logCat = getCat(log.type, log.drinkType);
+                  return (
+                    <div key={log.id} style={{
+                      display: "flex", alignItems: "center", padding: "9px 14px 9px 62px",
+                      gap: 10, borderBottom: i < catLogs.length - 1 ? "1px solid #f8f8f8" : "none",
+                    }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, color: "#555" }}>
+                          {logCat.emoji}
+                          {log.type === "drinking" && log.drinkType && (
+                            <span style={{ color: "#bbb" }}>{drinkLabel(log)}</span>
+                          )}
+                          {log.amount ? ` — ${log.amount}ml` : ""}
+                        </div>
+                        {log.note && <div style={{ fontSize: 11, color: "#bbb" }}>{log.note}</div>}
+                      </div>
+                      <div style={{ fontSize: 13, color: "#aaa", fontVariantNumeric: "tabular-nums" }}>{formatTime(log.ts)}</div>
+                      <button onClick={() => openEdit(log)} style={{
+                        background: "none", border: "none", cursor: "pointer", color: "#ccc", fontSize: 15, padding: "4px", lineHeight: 1,
+                      }}>✎</button>
+                      <button onClick={() => deleteLog(log.id)} style={{
+                        background: "none", border: "none", cursor: "pointer", color: "#ddd", fontSize: 18, padding: "4px", lineHeight: 1,
+                      }}>×</button>
+                    </div>
+                  );
+                })}
               </div>
             );
           })}
