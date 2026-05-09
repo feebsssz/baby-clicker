@@ -140,7 +140,7 @@ export default function BabyTracker() {
   const [diaperSolid, setDiaperSolid] = useState(false);
   const [modalTime, setModalTime] = useState("");
   const [justLogged, setJustLogged] = useState(null);
-  const [expanded, setExpanded] = useState(new Set(["drinking", "diaper", "pump"]));
+  const [expanded, setExpanded] = useState(new Set());
   const [expandedDays, setExpandedDays] = useState(new Set());
 
   // Manual entry modal (also used for editing)
