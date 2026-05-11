@@ -155,6 +155,9 @@ export default function BabyTracker() {
   const [manualDrinkType, setManualDrinkType] = useState("breast");
   const [manualDiaperWet, setManualDiaperWet] = useState(true);
   const [manualDiaperSolid, setManualDiaperSolid] = useState(false);
+  const [manualDiaperBulk, setManualDiaperBulk] = useState(false);
+  const [manualWetCount, setManualWetCount] = useState("");
+  const [manualSolidCount, setManualSolidCount] = useState("");
 
   const loadLogs = useCallback(async () => {
     try {
@@ -198,6 +201,9 @@ export default function BabyTracker() {
     setManualDrinkType("breast");
     setManualDiaperWet(true);
     setManualDiaperSolid(false);
+    setManualDiaperBulk(false);
+    setManualWetCount("");
+    setManualSolidCount("");
   }
 
   function openEdit(log) {
@@ -278,8 +284,23 @@ export default function BabyTracker() {
   }
 
   async function confirmManualLog() {
-    if (manualType === "diaper" && !manualDiaperWet && !manualDiaperSolid) return;
     const ts = manualDateTime ? new Date(manualDateTime).getTime() : Date.now();
+    if (manualType === "diaper" && manualDiaperBulk) {
+      const wet = parseInt(manualWetCount) || 0;
+      const solid = parseInt(manualSolidCount) || 0;
+      if (wet + solid === 0) return;
+      setManualOpen(false);
+      setEditingId(null);
+      for (let i = 0; i < wet; i++) {
+        await saveEntry({ id: ts + i, type: "diaper", drinkType: "wet", ts: ts + i, amount: null, note: manualNote || null });
+      }
+      for (let i = 0; i < solid; i++) {
+        await saveEntry({ id: ts + wet + i, type: "diaper", drinkType: "solid", ts: ts + wet + i, amount: null, note: manualNote || null });
+      }
+      return;
+    }
+    if (manualType === "diaper" && !manualDiaperWet && !manualDiaperSolid) return;
+
     const subType = manualType === "diaper"
       ? (manualDiaperWet && manualDiaperSolid ? "both" : manualDiaperWet ? "wet" : "solid")
       : null;
@@ -347,7 +368,11 @@ export default function BabyTracker() {
 
   const modalCat = modal ? (categories[modal] || {}) : {};
   const diaperSaveDisabled = modal === "diaper" && !diaperWet && !diaperSolid;
-  const manualDiaperSaveDisabled = manualType === "diaper" && !manualDiaperWet && !manualDiaperSolid;
+  const manualDiaperSaveDisabled = manualType === "diaper" && (
+    manualDiaperBulk
+      ? (parseInt(manualWetCount) || 0) + (parseInt(manualSolidCount) || 0) === 0
+      : !manualDiaperWet && !manualDiaperSolid
+  );
 
   if (loading) return (
     <div style={{
@@ -816,11 +841,41 @@ export default function BabyTracker() {
 
             {manualType === "diaper" && (
               <div style={{ marginBottom: 16 }}>
-                <label style={{ fontSize: 13, color: "#888", display: "block", marginBottom: 8 }}>Diaper Type (select one or both)</label>
-                <div style={{ display: "flex", gap: 10 }}>
-                  <CheckToggle label="Wet" emoji="💧" checked={manualDiaperWet} onChange={setManualDiaperWet} color="#b8d4b8" />
-                  <CheckToggle label="Solid" emoji="💩" checked={manualDiaperSolid} onChange={setManualDiaperSolid} color="#c4b18a" />
+                <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                  {[["Single entry", false], ["Daily total", true]].map(([label, val]) => (
+                    <button key={label} onClick={() => setManualDiaperBulk(val)} style={{
+                      flex: 1, padding: "8px", borderRadius: 10,
+                      border: `2px solid ${manualDiaperBulk === val ? "#b8d4b8" : "#eee"}`,
+                      background: manualDiaperBulk === val ? "#b8d4b820" : "white",
+                      cursor: "pointer", fontSize: 12, fontWeight: "600",
+                      color: manualDiaperBulk === val ? "#3a3028" : "#aaa",
+                      fontFamily: "inherit",
+                    }}>{label}</button>
+                  ))}
                 </div>
+                {manualDiaperBulk ? (
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 12, color: "#aaa", textAlign: "center", marginBottom: 4 }}>💧 Wet</div>
+                      <input type="number" inputMode="numeric" placeholder="0"
+                        value={manualWetCount} onChange={e => setManualWetCount(e.target.value)}
+                        style={{ width: "100%", padding: "14px 8px", borderRadius: 12, border: "2px solid #eee", fontSize: 22, textAlign: "center", outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
+                      />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 12, color: "#aaa", textAlign: "center", marginBottom: 4 }}>💩 Solid</div>
+                      <input type="number" inputMode="numeric" placeholder="0"
+                        value={manualSolidCount} onChange={e => setManualSolidCount(e.target.value)}
+                        style={{ width: "100%", padding: "14px 8px", borderRadius: 12, border: "2px solid #eee", fontSize: 22, textAlign: "center", outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <CheckToggle label="Wet" emoji="💧" checked={manualDiaperWet} onChange={setManualDiaperWet} color="#b8d4b8" />
+                    <CheckToggle label="Solid" emoji="💩" checked={manualDiaperSolid} onChange={setManualDiaperSolid} color="#c4b18a" />
+                  </div>
+                )}
               </div>
             )}
 
