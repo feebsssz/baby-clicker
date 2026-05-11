@@ -333,6 +333,9 @@ export default function BabyTracker() {
   const totalPump = todayLogs.filter(l => l.type === "pump").reduce((s, l) => s + (l.amount || 0), 0);
   const wetDiapers = todayLogs.filter(isWet).length;
   const solidDiapers = todayLogs.filter(isSolid).length;
+  const lastDrinking = todayLogs.find(l => l.type === "drinking");
+  const lastDiaper = todayLogs.find(l => l.type === "diaper" || l.type === "diaper_wet" || l.type === "diaper_solid");
+  const lastPump = todayLogs.find(l => l.type === "pump");
 
   const grouped = logs.reduce((acc, l) => {
     const d = dateKey(l.ts);
@@ -399,9 +402,9 @@ export default function BabyTracker() {
             marginBottom: 24, boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
             display: "flex", gap: 12, flexWrap: "wrap",
           }}>
-            <Stat label="Drinking" value={totalDrinking ? `${totalDrinking}ml` : "—"} color="#e8a598" />
-            <Stat label="Diapers" value={(wetDiapers + solidDiapers) > 0 ? `${wetDiapers}💧 ${solidDiapers}💩` : "—"} color="#b8d4b8" />
-            <Stat label="Pump" value={totalPump ? `${totalPump}ml` : "—"} color="#d4c5e2" />
+            <Stat label="Drinking" value={totalDrinking ? `${totalDrinking}ml` : "—"} color="#e8a598" sub={lastDrinking ? formatTime(lastDrinking.ts) : null} />
+            <Stat label="Diapers" value={(wetDiapers + solidDiapers) > 0 ? `${wetDiapers}💧 ${solidDiapers}💩` : "—"} color="#b8d4b8" sub={lastDiaper ? formatTime(lastDiaper.ts) : null} />
+            <Stat label="Pump" value={totalPump ? `${totalPump}ml` : "—"} color="#d4c5e2" sub={lastPump ? formatTime(lastPump.ts) : null} />
             <div style={{ marginLeft: "auto", display: "flex", alignItems: "center" }}>
               <button onClick={loadLogs} style={{
                 background: "none", border: "none", cursor: "pointer", fontSize: 18, padding: 4, color: "#ccc",
@@ -933,11 +936,12 @@ function CheckToggle({ label, emoji, checked, onChange, color }) {
   );
 }
 
-function Stat({ label, value, color }) {
+function Stat({ label, value, color, sub }) {
   return (
     <div style={{ background: color + "22", borderRadius: 10, padding: "7px 12px", minWidth: 60 }}>
       <div style={{ fontSize: 11, color: "#999", marginBottom: 2 }}>{label}</div>
       <div style={{ fontSize: 14, fontWeight: "700", color: "#3a3028" }}>{value}</div>
+      {sub && <div style={{ fontSize: 10, color: "#bbb", marginTop: 2 }}>{sub}</div>}
     </div>
   );
 }
