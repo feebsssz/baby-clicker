@@ -158,6 +158,8 @@ export default function BabyTracker() {
   const [manualDiaperBulk, setManualDiaperBulk] = useState(false);
   const [manualWetCount, setManualWetCount] = useState("");
   const [manualSolidCount, setManualSolidCount] = useState("");
+  const [manualDrinkBulk, setManualDrinkBulk] = useState(false);
+  const [manualPumpBulk, setManualPumpBulk] = useState(false);
 
   const loadLogs = useCallback(async () => {
     try {
@@ -204,6 +206,8 @@ export default function BabyTracker() {
     setManualDiaperBulk(false);
     setManualWetCount("");
     setManualSolidCount("");
+    setManualDrinkBulk(false);
+    setManualPumpBulk(false);
   }
 
   function openEdit(log) {
@@ -308,7 +312,7 @@ export default function BabyTracker() {
     let entry;
     if (manualType === "drinking") {
       entry = buildDrinkEntry({
-        id, type: manualType, drinkType: manualDrinkType, ts,
+        id, type: manualType, drinkType: manualDrinkBulk ? "both" : manualDrinkType, ts,
         breastAmt: manualBreastAmount, formulaAmt: manualFormulaAmount,
         singleAmt: manualAmount, noteText: manualNote,
       });
@@ -819,23 +823,36 @@ export default function BabyTracker() {
 
             {manualType === "drinking" && (
               <div style={{ marginBottom: 16 }}>
-                <label style={{ fontSize: 13, color: "#888", display: "block", marginBottom: 8 }}>Drink Type</label>
-                <div style={{ display: "flex", gap: 8 }}>
-                  {drinkTypes.map(dt => (
-                    <button key={dt.key} onClick={() => setManualDrinkType(dt.key)} style={{
-                      flex: 1, padding: "10px 6px", borderRadius: 12,
-                      border: `2px solid ${manualDrinkType === dt.key ? "#e8a598" : "#eee"}`,
-                      background: manualDrinkType === dt.key ? "#e8a59820" : "white",
+                <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                  {[["Single entry", false], ["Daily total", true]].map(([label, val]) => (
+                    <button key={label} onClick={() => setManualDrinkBulk(val)} style={{
+                      flex: 1, padding: "8px", borderRadius: 10,
+                      border: `2px solid ${manualDrinkBulk === val ? "#e8a598" : "#eee"}`,
+                      background: manualDrinkBulk === val ? "#e8a59820" : "white",
                       cursor: "pointer", fontSize: 12, fontWeight: "600",
-                      color: manualDrinkType === dt.key ? "#3a3028" : "#aaa",
+                      color: manualDrinkBulk === val ? "#3a3028" : "#aaa",
                       fontFamily: "inherit",
-                      display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
-                    }}>
-                      <span style={{ fontSize: 20 }}>{dt.emoji}</span>
-                      <span>{dt.label}</span>
-                    </button>
+                    }}>{label}</button>
                   ))}
                 </div>
+                {!manualDrinkBulk && (
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {drinkTypes.map(dt => (
+                      <button key={dt.key} onClick={() => setManualDrinkType(dt.key)} style={{
+                        flex: 1, padding: "10px 6px", borderRadius: 12,
+                        border: `2px solid ${manualDrinkType === dt.key ? "#e8a598" : "#eee"}`,
+                        background: manualDrinkType === dt.key ? "#e8a59820" : "white",
+                        cursor: "pointer", fontSize: 12, fontWeight: "600",
+                        color: manualDrinkType === dt.key ? "#3a3028" : "#aaa",
+                        fontFamily: "inherit",
+                        display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                      }}>
+                        <span style={{ fontSize: 20 }}>{dt.emoji}</span>
+                        <span>{dt.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -879,7 +896,22 @@ export default function BabyTracker() {
               </div>
             )}
 
-            {manualType === "drinking" && manualDrinkType === "both" ? (
+            {manualType === "pump" && (
+              <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                {[["Single entry", false], ["Daily total", true]].map(([label, val]) => (
+                  <button key={label} onClick={() => setManualPumpBulk(val)} style={{
+                    flex: 1, padding: "8px", borderRadius: 10,
+                    border: `2px solid ${manualPumpBulk === val ? "#d4c5e2" : "#eee"}`,
+                    background: manualPumpBulk === val ? "#d4c5e220" : "white",
+                    cursor: "pointer", fontSize: 12, fontWeight: "600",
+                    color: manualPumpBulk === val ? "#3a3028" : "#aaa",
+                    fontFamily: "inherit",
+                  }}>{label}</button>
+                ))}
+              </div>
+            )}
+
+            {(manualType === "drinking" && manualDrinkBulk) || (manualType === "drinking" && manualDrinkType === "both") ? (
               <div style={{ marginBottom: 16 }}>
                 <label style={{ fontSize: 13, color: "#888", display: "block", marginBottom: 8 }}>Amount (ml)</label>
                 <div style={{ display: "flex", gap: 10 }}>
